@@ -19,12 +19,18 @@ func main() {
 	jwt_middleware.CreateRefreshToken()
 
 	// Define backend service URLs
+	usersServiceURL, _ := url.Parse("http://localhost:50002")
 	settingsServiceURL, _ := url.Parse("http://localhost:50150")
-	photosServiceURL, _ := url.Parse("http://localhost:50151")
+
+	photosApiURL, _ := url.Parse("http://localhost:50151")
+	chatsApiURL, _ := url.Parse("http://localhost:50152")
 
 	// Create reverse proxies
-	photosProxy := ReverseProxy(photosServiceURL)
+	usersProxy := ReverseProxy(usersServiceURL)
 	settingsProxy := ReverseProxy(settingsServiceURL)
+
+	photosProxy := ReverseProxy(photosApiURL)
+	chatsProxy := ReverseProxy(chatsApiURL)
 
 	// Login route to generate JWT tokens
 	router.POST("/login", func(c *gin.Context) {
@@ -60,6 +66,27 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"token": tokenString})
 	})
 
+	// Users service routes (unprotected)
+	users := router.Group("/users")
+	{
+		users.Any("/*path", func(c *gin.Context) {
+
+			// Add user ID to headers for the backend service
+			userID := c.GetHeader("user_id")
+			fmt.Println(userID)
+
+			// Remove the prefix before forwarding
+			c.Request.URL.Path = strings.TrimPrefix(c.Request.URL.Path, "/users")
+			if c.Request.URL.Path == "" {
+				c.Request.URL.Path = "/"
+				fmt.Println(c.Request.URL.Path)
+			}
+			c.Request.Header.Set("X-User-ID", userID)
+
+			usersProxy.ServeHTTP(c.Writer, c.Request)
+		})
+	}
+
 	// Photos service routes (unprotected)
 	photos := router.Group("/photos")
 	{
@@ -78,6 +105,27 @@ func main() {
 			c.Request.Header.Set("X-User-ID", userID)
 
 			photosProxy.ServeHTTP(c.Writer, c.Request)
+		})
+	}
+
+	// Chats service routes (unprotected)
+	chats := router.Group("/chats")
+	{
+		chats.Any("/*path", func(c *gin.Context) {
+
+			// Add user ID to headers for the backend service
+			userID := c.GetHeader("user_id")
+			fmt.Println(userID)
+
+			// Remove the prefix before forwarding
+			c.Request.URL.Path = strings.TrimPrefix(c.Request.URL.Path, "/chats")
+			if c.Request.URL.Path == "" {
+				c.Request.URL.Path = "/"
+				fmt.Println(c.Request.URL.Path)
+			}
+			c.Request.Header.Set("X-User-ID", userID)
+
+			chatsProxy.ServeHTTP(c.Writer, c.Request)
 		})
 	}
 
